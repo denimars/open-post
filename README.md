@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-An open-source, Postman-like desktop app for testing API endpoints — built with
+An open-source, Postman-like desktop app for testing API endpoints, built with
 [Tauri v2](https://tauri.app) (Rust backend) and React 18 + TypeScript.
 
 Requests are executed by the Rust backend instead of the webview, so there are **no CORS
@@ -13,18 +13,18 @@ restrictions** and no browser sandbox getting in the way of your API testing.
 
 ## Features
 
-- **Request builder** — GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+- **Request builder**: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
   - URL input with query params kept in two-way sync with the Params table
   - Headers table (key / value / enabled)
   - Bodies: `none`, `raw` (JSON / Text / XML), `x-www-form-urlencoded`, `form-data`
   - Auth: None, Bearer Token, Basic Auth
-- **Response viewer** — status code and text, duration (ms), size (bytes), Pretty/Raw body
+- **Response viewer**: status code and text, duration (ms), size (bytes), Pretty/Raw body
   with syntax highlighting, and a Response Headers tab
-- **Cancel & timeout** — abort in-flight requests, configurable per-request timeout
-- **Tabs** — several requests open at once
-- **History** — every sent request stored locally
-- **Collections** — save requests into named collections
-- **Environment variables** — `{{base_url}}`, `{{token}}`, … resolved in Rust against the
+- **Cancel & timeout**: abort in-flight requests, configurable per-request timeout
+- **Tabs**: several requests open at once
+- **History**: every sent request stored locally
+- **Collections**: save requests into named collections
+- **Environment variables**: `{{base_url}}`, `{{token}}`, … resolved in Rust against the
   selected active environment; unresolved variables are reported back with the response
 - **Light & dark mode**, resizable panels, keyboard shortcuts
 
@@ -55,7 +55,7 @@ restrictions** and no browser sandbox getting in the way of your API testing.
 
 - [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io)
 - [Rust](https://rustup.rs) stable (1.77.2 or newer)
-- Platform build dependencies for Tauri v2 — see the
+- Platform build dependencies for Tauri v2, see the
   [Tauri prerequisites guide](https://tauri.app/start/prerequisites/)
   (on Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `build-essential`, `libssl-dev`,
   `libayatana-appindicator3-dev`, `librsvg2-dev`)
@@ -124,7 +124,7 @@ open-post/
 - **One shared `reqwest::Client`** lives in `tauri::State`; it is never recreated per request.
 - **Cancellation** uses a `CancellationToken` per `request_id`, stored in shared state and
   triggered by `cancel_request(request_id)`.
-- **Non-2xx responses are not errors** — 404 and 500 come back as a normal `HttpResponse`.
+- **Non-2xx responses are not errors**: 404 and 500 come back as a normal `HttpResponse`.
 - **Errors** are typed: every command returns `Result<T, AppError>` and `AppError` serializes
   to `{ kind, message }`, with distinct kinds for DNS, connection, timeout, TLS and
   cancellation failures.

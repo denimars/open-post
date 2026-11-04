@@ -30,8 +30,15 @@ pub fn save_request(
     collection_id: String,
     name: String,
     request: HttpRequest,
+    saved_request_id: Option<String>,
 ) -> AppResult<SavedRequest> {
-    collections::save_request(&state.db, &collection_id, &name, &request)
+    collections::save_request(
+        &state.db,
+        &collection_id,
+        &name,
+        &request,
+        saved_request_id.as_deref(),
+    )
 }
 
 #[tauri::command]

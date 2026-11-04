@@ -59,12 +59,22 @@ export function deleteCollection(id: string): Promise<void> {
   return call<void>("delete_collection", { id });
 }
 
+/**
+ * Saves a request into a collection. `savedRequestId` updates that existing
+ * entry; omitting it always creates a new one.
+ */
 export function saveRequest(
   collectionId: string,
   name: string,
   request: HttpRequest,
+  savedRequestId: string | null = null,
 ): Promise<SavedRequest> {
-  return call<SavedRequest>("save_request", { collectionId, name, request });
+  return call<SavedRequest>("save_request", {
+    collectionId,
+    name,
+    request,
+    savedRequestId,
+  });
 }
 
 export function deleteRequest(id: string): Promise<void> {

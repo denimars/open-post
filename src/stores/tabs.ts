@@ -3,6 +3,14 @@ import { createId } from "@/lib/utils";
 import { mergeParams, paramsFromUrl, urlWithParams } from "@/lib/url";
 import type { AppError, HttpRequest, HttpResponse, KeyValue } from "@/types";
 
+/** Which entry in a collection this tab is linked to. */
+export interface SavedTo {
+  collectionId: string;
+  /** Id of the row in `saved_requests` — never the request's own id. */
+  savedRequestId: string;
+  name: string;
+}
+
 export interface Tab {
   id: string;
   title: string;
@@ -11,7 +19,7 @@ export interface Tab {
   error: AppError | null;
   isSending: boolean;
   /** Set once the tab has been saved into a collection. */
-  savedTo: { collectionId: string; name: string } | null;
+  savedTo: SavedTo | null;
   isDirty: boolean;
 }
 
@@ -29,7 +37,7 @@ export function emptyRequest(): HttpRequest {
   };
 }
 
-export function newTab(request?: HttpRequest, title?: string): Tab {
+export function newTab(request?: HttpRequest, title?: string, savedTo?: SavedTo | null): Tab {
   const req = request ?? emptyRequest();
   return {
     id: createId(),
@@ -38,7 +46,7 @@ export function newTab(request?: HttpRequest, title?: string): Tab {
     response: null,
     error: null,
     isSending: false,
-    savedTo: null,
+    savedTo: savedTo ?? null,
     isDirty: false,
   };
 }
@@ -48,7 +56,12 @@ interface TabsState {
   activeTabId: string | null;
   activeEnvironmentId: string | null;
 
-  openTab: (request?: HttpRequest, title?: string) => string;
+  openTab: (request?: HttpRequest, title?: string, savedTo?: SavedTo | null) => string;
+  /**
+   * Opens a request stored in a collection. If a tab for that same saved entry
+   * is already open it is focused instead of opening a duplicate.
+   */
+  openSavedRequest: (request: HttpRequest, savedTo: SavedTo) => string;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   /** Patches the active tab's request and keeps URL and params in sync. */
@@ -75,13 +88,26 @@ export function titleFor(request: HttpRequest): string {
   return path.length > 40 ? `${path.slice(0, 39)}…` : path;
 }
 
-export const useTabsStore = create<TabsState>((set) => ({
+export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
   activeEnvironmentId: null,
 
-  openTab: (request, title) => {
-    const tab = newTab(request, title);
+  openTab: (request, title, savedTo) => {
+    const tab = newTab(request, title, savedTo);
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id }));
+    return tab.id;
+  },
+
+  openSavedRequest: (request, savedTo) => {
+    const existing = get().tabs.find(
+      (tab) => tab.savedTo?.savedRequestId === savedTo.savedRequestId,
+    );
+    if (existing) {
+      set({ activeTabId: existing.id });
+      return existing.id;
+    }
+    const tab = newTab(request, savedTo.name, savedTo);
     set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id }));
     return tab.id;
   },

@@ -135,9 +135,10 @@ export function App() {
         open={showSave}
         request={tab?.request ?? null}
         defaultName={tab?.savedTo?.name ?? tab?.title ?? "New request"}
+        savedTo={tab?.savedTo ?? null}
         onClose={() => setShowSave(false)}
-        onSaved={(collectionId, name) => {
-          if (tab) setTabState(tab.id, { savedTo: { collectionId, name }, isDirty: false, title: name });
+        onSaved={(savedTo) => {
+          if (tab) setTabState(tab.id, { savedTo, isDirty: false, title: savedTo.name });
         }}
       />
     </div>

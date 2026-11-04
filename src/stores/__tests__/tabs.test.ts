@@ -24,6 +24,36 @@ describe("tabs store", () => {
     expect(first?.request.id).not.toBe(second?.request.id);
   });
 
+  it("focuses the existing tab instead of opening a saved request twice", () => {
+    const { openSavedRequest } = useTabsStore.getState();
+    const savedTo = { collectionId: "c1", savedRequestId: "s1", name: "get" };
+    const first = openSavedRequest(emptyRequest(), savedTo);
+    useTabsStore.getState().openTab();
+    const second = openSavedRequest(emptyRequest(), savedTo);
+
+    expect(second).toBe(first);
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+    expect(useTabsStore.getState().activeTabId).toBe(first);
+  });
+
+  it("opens a separate tab per saved request", () => {
+    const { openSavedRequest } = useTabsStore.getState();
+    openSavedRequest(emptyRequest(), {
+      collectionId: "c1",
+      savedRequestId: "s1",
+      name: "get",
+    });
+    openSavedRequest(emptyRequest(), {
+      collectionId: "c1",
+      savedRequestId: "s2",
+      name: "post",
+    });
+
+    const { tabs } = useTabsStore.getState();
+    expect(tabs).toHaveLength(2);
+    expect(tabs.map((tab) => tab.title)).toEqual(["get", "post"]);
+  });
+
   it("activates the next tab when the active one is closed", () => {
     const { openTab } = useTabsStore.getState();
     const first = openTab();

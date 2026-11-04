@@ -15,7 +15,7 @@ import type { Collection } from "@/types";
 
 export function CollectionsTree() {
   const queryClient = useQueryClient();
-  const openTab = useTabsStore((state) => state.openTab);
+  const openSavedRequest = useTabsStore((state) => state.openSavedRequest);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [newName, setNewName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -122,7 +122,13 @@ export function CollectionsTree() {
                     {collection.requests.map((saved) => (
                       <li key={saved.id} className="group flex items-center hover:bg-muted">
                         <button
-                          onClick={() => openTab(saved.request, saved.name)}
+                          onClick={() =>
+                            openSavedRequest(saved.request, {
+                              collectionId: collection.id,
+                              savedRequestId: saved.id,
+                              name: saved.name,
+                            })
+                          }
                           className="flex min-w-0 flex-1 items-center gap-2 py-1 pl-7 pr-2 text-left text-xs"
                         >
                           <span className="w-10 shrink-0 font-semibold text-muted-foreground">

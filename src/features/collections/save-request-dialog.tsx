@@ -4,20 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { createCollection, listCollections, saveRequest } from "@/lib/tauri";
+import type { SavedTo } from "@/stores/tabs";
 import type { Collection, HttpRequest } from "@/types";
 
 interface SaveRequestDialogProps {
   open: boolean;
   request: HttpRequest | null;
   defaultName: string;
+  /** The collection entry this tab already came from, if any. */
+  savedTo: SavedTo | null;
   onClose: () => void;
-  onSaved: (collectionId: string, name: string) => void;
+  onSaved: (savedTo: SavedTo) => void;
 }
 
 export function SaveRequestDialog({
   open,
   request,
   defaultName,
+  savedTo,
   onClose,
   onSaved,
 }: SaveRequestDialogProps) {
@@ -33,14 +37,25 @@ export function SaveRequestDialog({
   });
 
   useEffect(() => {
-    if (open) setName(defaultName);
-  }, [open, defaultName]);
+    if (open) {
+      setName(defaultName);
+      if (savedTo) setCollectionId(savedTo.collectionId);
+    }
+  }, [open, defaultName, savedTo]);
 
   useEffect(() => {
     if (collectionId === "" && collections.length > 0) {
       setCollectionId(collections[0]?.id ?? "");
     }
   }, [collections, collectionId]);
+
+  /**
+   * Only re-saving the very same entry (same collection, same name) updates it.
+   * Anything else is a new request, so saving a POST next to an existing GET in
+   * the same collection adds a second entry instead of overwriting the first.
+   */
+  const isUpdate =
+    savedTo !== null && savedTo.collectionId === collectionId && savedTo.name === name.trim();
 
   const save = useMutation({
     mutationFn: async () => {
@@ -50,12 +65,21 @@ export function SaveRequestDialog({
         const created = await createCollection(newCollection.trim() || "My collection");
         targetId = created.id;
       }
-      await saveRequest(targetId, name.trim(), request);
-      return { targetId, name: name.trim() };
+      const saved = await saveRequest(
+        targetId,
+        name.trim(),
+        request,
+        isUpdate ? savedTo.savedRequestId : null,
+      );
+      return saved;
     },
-    onSuccess: ({ targetId, name: savedName }) => {
+    onSuccess: (saved) => {
       queryClient.invalidateQueries({ queryKey: ["collections"] });
-      onSaved(targetId, savedName);
+      onSaved({
+        collectionId: saved.collectionId,
+        savedRequestId: saved.id,
+        name: saved.name,
+      });
       onClose();
     },
   });
@@ -121,6 +145,12 @@ export function SaveRequestDialog({
           </label>
         )}
 
+        <p className="text-xs text-muted-foreground">
+          {isUpdate
+            ? `Overwrites “${savedTo.name}” in this collection.`
+            : "Saved as a new request in this collection."}
+        </p>
+
         {save.isError && (
           <p className="text-xs text-red-500">Could not save the request. Please try again.</p>
         )}
@@ -130,7 +160,7 @@ export function SaveRequestDialog({
             Cancel
           </Button>
           <Button type="submit" disabled={!name.trim() || save.isPending}>
-            Save
+            {isUpdate ? "Update" : "Save"}
           </Button>
         </div>
       </form>

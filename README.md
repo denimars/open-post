@@ -75,6 +75,52 @@ pnpm tauri build
 
 Installers and bundles are written to `src-tauri/target/release/bundle/`.
 
+### Build a Debian package (`.deb`)
+
+```bash
+pnpm build:deb      # .deb only  (fastest)
+pnpm build:linux    # .deb + AppImage
+```
+
+The package lands in `src-tauri/target/release/bundle/deb/` as
+`Open Post_<version>_amd64.deb`. Install and uninstall it with:
+
+```bash
+sudo apt install "./src-tauri/target/release/bundle/deb/Open Post_0.1.1_amd64.deb"
+sudo apt remove open-post
+```
+
+`apt install` is preferred over `dpkg -i` because it pulls the runtime dependencies
+(`libwebkit2gtk-4.1-0`, `libgtk-3-0`) automatically. The package installs
+`/usr/bin/open-post`, a desktop entry and the hicolor icons, so "Open Post" shows up in
+the application menu.
+
+Notes:
+
+- The package version comes from `version` in `src-tauri/tauri.conf.json`; keep
+  `package.json` and `src-tauri/Cargo.toml` in sync with it.
+- The `.deb` is built for the host architecture only — build on arm64 to get an arm64
+  package.
+- Debian packaging metadata (section, priority, maintainer, description, license) lives
+  under `bundle` in `src-tauri/tauri.conf.json`.
+
+### App icon
+
+The app icon is the paper-plane mark from the diya PROJECT logo, on a white rounded
+square so it stays visible on dark taskbars. The wordmark itself is not used as the icon
+because it is unreadable at 32px.
+
+To regenerate the whole icon set from the logo:
+
+```bash
+python3 scripts/make-icon.py src/assets/diya-logo.png src-tauri/icons/icon-source.png
+pnpm tauri icon src-tauri/icons/icon-source.png
+```
+
+`src/assets/diya-logo.png` is only 160x64, so the script isolates the mark and
+contrast-sharpens the upscaled mask. Replacing the logo with an SVG or a 1024px PNG
+would give a crisper icon.
+
 ## Development
 
 ```bash

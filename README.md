@@ -1,0 +1,172 @@
+# Open Post
+
+An open-source, Postman-like desktop app for testing API endpoints — built with
+[Tauri v2](https://tauri.app) (Rust backend) and React 18 + TypeScript.
+
+Requests are executed by the Rust backend instead of the webview, so there are **no CORS
+restrictions** and no browser sandbox getting in the way of your API testing.
+
+> **Scope:** REST/HTTP only. GraphQL, WebSocket, gRPC, mock servers, scripting, cloud sync
+> and user accounts are out of scope for now.
+
+## Features
+
+- **Request builder** — GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+  - URL input with query params kept in two-way sync with the Params table
+  - Headers table (key / value / enabled)
+  - Bodies: `none`, `raw` (JSON / Text / XML), `x-www-form-urlencoded`, `form-data`
+  - Auth: None, Bearer Token, Basic Auth
+- **Response viewer** — status code and text, duration (ms), size (bytes), Pretty/Raw body
+  with syntax highlighting, and a Response Headers tab
+- **Cancel & timeout** — abort in-flight requests, configurable per-request timeout
+- **Tabs** — several requests open at once
+- **History** — every sent request stored locally
+- **Collections** — save requests into named collections
+- **Environment variables** — `{{base_url}}`, `{{token}}`, … resolved in Rust against the
+  selected active environment; unresolved variables are reported back with the response
+- **Light & dark mode**, resizable panels, keyboard shortcuts
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl/Cmd + Enter` | Send the active request |
+| `Ctrl/Cmd + S` | Save the active request to a collection |
+| `Enter` (URL bar) | Send the active request |
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Desktop shell | Tauri v2 |
+| Backend | Rust 2021 (1.77.2+), `tokio`, `reqwest` (rustls), `serde`, `thiserror`, `uuid` |
+| Persistence | SQLite via `rusqlite` (bundled) in the app data dir |
+| Frontend | React 18 + TypeScript (strict) + Vite 6 |
+| State | Zustand (UI/tabs) + TanStack Query (data from Rust) |
+| Styling | Tailwind CSS v4 + shadcn/ui-style components |
+| Editor | CodeMirror 6 (`@uiw/react-codemirror`) |
+| Package manager | pnpm |
+
+## Getting started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io)
+- [Rust](https://rustup.rs) stable (1.77.2 or newer)
+- Platform build dependencies for Tauri v2 — see the
+  [Tauri prerequisites guide](https://tauri.app/start/prerequisites/)
+  (on Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `build-essential`, `libssl-dev`,
+  `libayatana-appindicator3-dev`, `librsvg2-dev`)
+
+### Run in development
+
+```bash
+pnpm install
+pnpm tauri dev
+```
+
+### Build for production
+
+```bash
+pnpm tauri build
+```
+
+Installers and bundles are written to `src-tauri/target/release/bundle/`.
+
+## Development
+
+```bash
+# Frontend
+pnpm lint          # ESLint
+pnpm typecheck     # tsc --noEmit
+pnpm test          # Vitest
+
+# Rust (from src-tauri/)
+cargo fmt
+cargo clippy -- -D warnings
+cargo test
+```
+
+All five must pass before a change is considered done.
+
+Tests never hit the real internet: HTTP execution is tested against
+[`wiremock`](https://docs.rs/wiremock), and storage repositories run on in-memory SQLite.
+
+## Project layout
+
+```
+open-post/
+├── src/                      # React frontend
+│   ├── app/                  # Layout, panels, theme
+│   ├── features/             # request, response, tabs, history, collections, environments
+│   ├── components/ui/        # Reusable UI primitives
+│   ├── lib/
+│   │   ├── tauri.ts          # The ONLY place that calls invoke()
+│   │   └── variables.ts      # {{var}} display helpers
+│   ├── stores/               # Zustand stores
+│   └── types/                # TS types mirroring the Rust structs
+└── src-tauri/
+    └── src/
+        ├── lib.rs            # Tauri builder, command & state registration
+        ├── commands/         # Thin #[tauri::command] wrappers
+        ├── http/             # client.rs, builder.rs, variables.rs
+        ├── storage/          # SQLite migrations & repositories
+        ├── models.rs         # Serde structs shared with the frontend
+        └── error.rs          # AppError + Serialize impl
+```
+
+## Architecture notes
+
+- **All HTTP goes through Rust** via the `send_request` command. The frontend never uses
+  `fetch`/`axios` for user requests.
+- **One shared `reqwest::Client`** lives in `tauri::State`; it is never recreated per request.
+- **Cancellation** uses a `CancellationToken` per `request_id`, stored in shared state and
+  triggered by `cancel_request(request_id)`.
+- **Non-2xx responses are not errors** — 404 and 500 come back as a normal `HttpResponse`.
+- **Errors** are typed: every command returns `Result<T, AppError>` and `AppError` serializes
+  to `{ kind, message }`, with distinct kinds for DNS, connection, timeout, TLS and
+  cancellation failures.
+- **Binary bodies** are sent as base64 with an `is_binary` flag; large bodies are capped in
+  the viewer rather than crashing the app.
+- **Shared types** are generated by hand on both sides: Rust structs use
+  `#[serde(rename_all = "camelCase")]` and must match `src/types/` exactly.
+
+### Tauri commands
+
+| Command | Purpose |
+|---|---|
+| `send_request(request, environmentId?)` | Execute a request, store it in history, return the response |
+| `cancel_request(requestId)` | Cancel an in-flight request |
+| `list_history(limit)` / `clear_history()` | History |
+| `list_collections()` / `create_collection(name)` / `rename_collection(id, name)` / `delete_collection(id)` | Collections |
+| `save_request(collectionId, request)` / `delete_request(id)` | Saved requests |
+| `list_environments()` / `save_environment(env)` / `delete_environment(id)` | Environments |
+| `set_active_environment(id?)` / `get_active_environment()` | Active environment |
+
+## Data storage
+
+Everything is local. History, collections and environments live in a single SQLite file,
+`open-post.db`, inside the platform app data directory:
+
+- **Linux:** `~/.local/share/dev.openpost.app/`
+- **macOS:** `~/Library/Application Support/dev.openpost.app/`
+- **Windows:** `%APPDATA%\dev.openpost.app\`
+
+No data leaves your machine, and there is no telemetry.
+
+## Roadmap / known gaps
+
+- File upload in `form-data` bodies (text fields only today)
+- Postman collection import/export
+- Persistent cookie jar
+- Proxy support and client certificates
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep commits in
+[Conventional Commits](https://www.conventionalcommits.org) form (`feat:`, `fix:`,
+`refactor:`, `test:`, `chore:`) and make sure `cargo fmt`, `cargo clippy -- -D warnings`,
+`cargo test`, `pnpm typecheck` and `pnpm lint` all pass.
+
+See [CLAUDE.md](./CLAUDE.md) for the detailed conventions and architecture rules this
+project follows.

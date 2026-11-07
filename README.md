@@ -24,6 +24,9 @@ restrictions** and no browser sandbox getting in the way of your API testing.
 - **Tabs**: several requests open at once
 - **History**: every sent request stored locally
 - **Collections**: save requests into named collections
+- **Share with your team**: export a collection or an environment as a
+  [Postman Collection v2.1](https://schema.postman.com/) file and import one back, so the
+  files also open in Postman, Insomnia, Bruno or Hoppscotch
 - **Environment variables**: `{{base_url}}`, `{{token}}`, … resolved in Rust against the
   selected active environment; unresolved variables are reported back with the response
 - **Light & dark mode**, resizable panels, keyboard shortcuts
@@ -158,6 +161,7 @@ open-post/
         ├── lib.rs            # Tauri builder, command & state registration
         ├── commands/         # Thin #[tauri::command] wrappers
         ├── http/             # client.rs, builder.rs, variables.rs
+        ├── postman/          # Postman v2.1 schema, export, import
         ├── storage/          # SQLite migrations & repositories
         ├── models.rs         # Serde structs shared with the frontend
         └── error.rs          # AppError + Serialize impl
@@ -190,6 +194,10 @@ open-post/
 | `save_request(collectionId, request)` / `delete_request(id)` | Saved requests |
 | `list_environments()` / `save_environment(env)` / `delete_environment(id)` | Environments |
 | `set_active_environment(id?)` / `get_active_environment()` | Active environment |
+| `export_collection(collectionId)` / `export_collection_to_file(collectionId, path?)` | Export as Postman v2.1 |
+| `import_collection(json)` / `import_collection_from_file(path)` | Import a Postman collection |
+| `export_environment(environmentId)` / `export_environment_to_file(environmentId, path?)` | Export a Postman environment |
+| `import_environment(json)` / `import_environment_from_file(path)` | Import a Postman environment |
 
 ## Data storage
 
@@ -202,10 +210,37 @@ Everything is local. History, collections and environments live in a single SQLi
 
 No data leaves your machine, and there is no telemetry.
 
+## Sharing collections with your team
+
+Export writes a Postman Collection v2.1 file, the format every other API client reads:
+
+1. Hover a collection in the sidebar and press the **download** icon. The file lands in your
+   download directory as `my-api.postman_collection.json`, and the app shows the full path.
+2. Send that file to your teammates. They press **upload** in the Collections header and pick
+   it; it arrives as a new collection, never overwriting one they already have (a repeated
+   name becomes `My API (2)`).
+
+Environments work the same way, from the download/upload icons in the Environments dialog.
+
+What survives a round trip: method, URL, query params, headers, the four body modes, Bearer
+and Basic auth, `{{variables}}` and the per-request timeout. Because open-post has no nested
+folders, a Postman folder tree is flattened into the request name (`Invoices/List invoices`)
+and rebuilt into folders on export.
+
+What cannot be mapped is reported after the import rather than dropped silently: file upload
+fields, GraphQL bodies and auth schemes beyond Bearer/Basic (OAuth 2, API key, AWS v4, …).
+Collection-level variables become a new environment, since `{{base_url}}` would otherwise be
+unresolved.
+
+> Exported files contain whatever you typed, including tokens and passwords. Prefer keeping
+> secrets in an environment you do not share.
+
 ## Roadmap / known gaps
 
+- A native "Save as…" / "Open" dialog for import and export (needs `tauri-plugin-dialog`;
+  export currently writes to the download directory, import uses the webview file picker)
 - File upload in `form-data` bodies (text fields only today)
-- Postman collection import/export
+- Postman v1 collections (re-export them from Postman as v2.1)
 - Persistent cookie jar
 - Proxy support and client certificates
 

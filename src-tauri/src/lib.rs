@@ -2,6 +2,7 @@ pub mod commands;
 pub mod error;
 pub mod http;
 pub mod models;
+pub mod postman;
 pub mod storage;
 
 use crate::error::AppError;
@@ -45,6 +46,14 @@ pub fn run() {
             commands::collections::delete_collection,
             commands::collections::save_request,
             commands::collections::delete_request,
+            commands::transfer::export_collection,
+            commands::transfer::export_collection_to_file,
+            commands::transfer::import_collection,
+            commands::transfer::import_collection_from_file,
+            commands::transfer::export_environment,
+            commands::transfer::export_environment_to_file,
+            commands::transfer::import_environment,
+            commands::transfer::import_environment_from_file,
             commands::environments::list_environments,
             commands::environments::save_environment,
             commands::environments::delete_environment,

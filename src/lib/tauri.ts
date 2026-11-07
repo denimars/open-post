@@ -5,10 +5,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Collection,
+  CollectionImportReport,
   Environment,
+  EnvironmentImportReport,
+  ExportFile,
   HistoryEntry,
   HttpRequest,
   HttpResponse,
+  SavedExport,
   SavedRequest,
 } from "@/types";
 import { toAppError } from "@/types";
@@ -99,4 +103,46 @@ export function setActiveEnvironment(id: string | null): Promise<void> {
 
 export function getActiveEnvironment(): Promise<string | null> {
   return call<string | null>("get_active_environment");
+}
+
+// ----------------------------------------------- Postman import / export
+
+/** Returns the collection as Postman v2.1 JSON, without touching the disk. */
+export function exportCollection(collectionId: string): Promise<ExportFile> {
+  return call<ExportFile>("export_collection", { collectionId });
+}
+
+/** Writes the collection to `path`, or to the download directory when omitted. */
+export function exportCollectionToFile(
+  collectionId: string,
+  path: string | null = null,
+): Promise<SavedExport> {
+  return call<SavedExport>("export_collection_to_file", { collectionId, path });
+}
+
+export function importCollection(json: string): Promise<CollectionImportReport> {
+  return call<CollectionImportReport>("import_collection", { json });
+}
+
+export function importCollectionFromFile(path: string): Promise<CollectionImportReport> {
+  return call<CollectionImportReport>("import_collection_from_file", { path });
+}
+
+export function exportEnvironment(environmentId: string): Promise<ExportFile> {
+  return call<ExportFile>("export_environment", { environmentId });
+}
+
+export function exportEnvironmentToFile(
+  environmentId: string,
+  path: string | null = null,
+): Promise<SavedExport> {
+  return call<SavedExport>("export_environment_to_file", { environmentId, path });
+}
+
+export function importEnvironment(json: string): Promise<EnvironmentImportReport> {
+  return call<EnvironmentImportReport>("import_environment", { json });
+}
+
+export function importEnvironmentFromFile(path: string): Promise<EnvironmentImportReport> {
+  return call<EnvironmentImportReport>("import_environment_from_file", { path });
 }

@@ -169,6 +169,111 @@ pub fn delete_request(db: &Database, id: &str) -> AppResult<()> {
     })
 }
 
+/// Inserts a collection and every one of its requests in a single
+/// transaction, so a failed import leaves nothing behind.
+///
+/// The name is made unique (`API`, `API (2)`, …) because importing the same
+/// file twice should give two collections rather than silently merge them.
+pub fn import(
+    db: &Database,
+    name: &str,
+    requests: &[(String, HttpRequest)],
+) -> AppResult<Collection> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::InvalidRequest(
+            "the collection name is empty".into(),
+        ));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut saved = Vec::with_capacity(requests.len());
+    for (request_name, request) in requests {
+        let request_name = request_name.trim();
+        if request_name.is_empty() {
+            continue;
+        }
+        saved.push((
+            uuid::Uuid::new_v4().to_string(),
+            request_name.to_string(),
+            serde_json::to_string(request)?,
+            request.clone(),
+        ));
+    }
+
+    let unique = db.with(|conn| {
+        let tx = conn.unchecked_transaction()?;
+        let unique = unique_collection_name(&tx, name)?;
+        let created_at = now_ms();
+
+        tx.execute(
+            "INSERT INTO collections (id, name, created_at) VALUES (?1, ?2, ?3)",
+            params![id, unique, created_at],
+        )?;
+        for (index, (request_id, request_name, request_json, _)) in saved.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO saved_requests (id, collection_id, name, request_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    request_id,
+                    id,
+                    request_name,
+                    request_json,
+                    created_at + index as i64
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(unique)
+    })?;
+
+    Ok(Collection {
+        id: id.clone(),
+        name: unique,
+        requests: saved
+            .into_iter()
+            .map(|(request_id, request_name, _, request)| SavedRequest {
+                id: request_id,
+                collection_id: id.clone(),
+                name: request_name,
+                request,
+            })
+            .collect(),
+    })
+}
+
+/// Returns `name`, or `name (2)`, `name (3)`, … if it is already taken.
+fn unique_collection_name(conn: &rusqlite::Connection, name: &str) -> AppResult<String> {
+    let taken = |candidate: &str| -> AppResult<bool> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM collections WHERE name = ?1 COLLATE NOCASE",
+            params![candidate],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    };
+
+    if !taken(name)? {
+        return Ok(name.to_string());
+    }
+    for suffix in 2..1000 {
+        let candidate = format!("{name} ({suffix})");
+        if !taken(&candidate)? {
+            return Ok(candidate);
+        }
+    }
+    Err(AppError::Storage(format!(
+        "too many collections already named `{name}`"
+    )))
+}
+
+/// Looks a single collection up, with its requests.
+pub fn get(db: &Database, id: &str) -> AppResult<Collection> {
+    list(db)?
+        .into_iter()
+        .find(|collection| collection.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("collection {id}")))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,6 +470,89 @@ mod tests {
         let collection = create(&db, "Old").expect("create");
         rename(&db, &collection.id, "New").expect("rename");
         assert_eq!(list(&db).expect("list")[0].name, "New");
+    }
+
+    #[test]
+    fn imports_a_collection_with_its_requests_in_order() {
+        let db = Database::open_in_memory().expect("db");
+        let imported = import(
+            &db,
+            "Billing",
+            &[
+                ("Invoices/List".to_string(), request("r1", "https://a.test")),
+                ("Ping".to_string(), request("r2", "https://b.test")),
+            ],
+        )
+        .expect("import");
+
+        assert_eq!(imported.name, "Billing");
+        assert_eq!(imported.requests.len(), 2);
+
+        let listed = list(&db).expect("list");
+        let names: Vec<_> = listed[0].requests.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["Invoices/List", "Ping"]);
+        assert_eq!(listed[0].requests[1].request.url, "https://b.test");
+    }
+
+    /// Importing the same file twice must not merge into, or overwrite, the
+    /// collection already there.
+    #[test]
+    fn importing_the_same_name_twice_keeps_both() {
+        let db = Database::open_in_memory().expect("db");
+        let entries = [("Ping".to_string(), request("r1", "https://a.test"))];
+
+        let first = import(&db, "API", &entries).expect("import");
+        let second = import(&db, "API", &entries).expect("import");
+        let third = import(&db, "API", &entries).expect("import");
+
+        assert_eq!(first.name, "API");
+        assert_eq!(second.name, "API (2)");
+        assert_eq!(third.name, "API (3)");
+        assert_eq!(list(&db).expect("list").len(), 3);
+    }
+
+    #[test]
+    fn importing_an_empty_collection_still_creates_it() {
+        let db = Database::open_in_memory().expect("db");
+        let imported = import(&db, "Empty", &[]).expect("import");
+        assert!(imported.requests.is_empty());
+        assert_eq!(list(&db).expect("list").len(), 1);
+    }
+
+    #[test]
+    fn importing_skips_requests_with_a_blank_name() {
+        let db = Database::open_in_memory().expect("db");
+        let imported = import(
+            &db,
+            "API",
+            &[
+                ("  ".to_string(), request("r1", "https://a.test")),
+                ("Ok".to_string(), request("r2", "https://b.test")),
+            ],
+        )
+        .expect("import");
+        assert_eq!(imported.requests.len(), 1);
+        assert_eq!(imported.requests[0].name, "Ok");
+    }
+
+    #[test]
+    fn importing_without_a_name_is_rejected() {
+        let db = Database::open_in_memory().expect("db");
+        assert_eq!(
+            import(&db, "  ", &[]).expect_err("should fail").kind(),
+            "invalidRequest"
+        );
+    }
+
+    #[test]
+    fn get_returns_a_single_collection() {
+        let db = Database::open_in_memory().expect("db");
+        let created = create(&db, "API").expect("create");
+        assert_eq!(get(&db, &created.id).expect("get").name, "API");
+        assert_eq!(
+            get(&db, "nope").expect_err("should fail").kind(),
+            "notFound"
+        );
     }
 
     #[test]

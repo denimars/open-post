@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, X } from "lucide-react";
+import { Download, Plus, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TransferBanner, type TransferResult } from "@/components/ui/transfer-banner";
 import { KeyValueTable } from "@/features/request/key-value-table";
-import { deleteEnvironment, listEnvironments, saveEnvironment } from "@/lib/tauri";
+import {
+  deleteEnvironment,
+  exportEnvironmentToFile,
+  importEnvironment,
+  listEnvironments,
+  saveEnvironment,
+} from "@/lib/tauri";
+import { pickJsonFile } from "@/lib/pick-file";
 import { cn } from "@/lib/utils";
-import type { Environment } from "@/types";
+import { toAppError, type Environment } from "@/types";
 
 interface EnvironmentManagerProps {
   open: boolean;
@@ -17,6 +25,7 @@ export function EnvironmentManager({ open, onClose }: EnvironmentManagerProps) {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Environment | null>(null);
+  const [result, setResult] = useState<TransferResult | null>(null);
 
   const { data: environments = [] } = useQuery({
     queryKey: ["environments"],
@@ -58,6 +67,35 @@ export function EnvironmentManager({ open, onClose }: EnvironmentManagerProps) {
     },
   });
 
+  const importFile = useMutation({
+    mutationFn: async () => {
+      const picked = await pickJsonFile();
+      if (!picked) return null;
+      return importEnvironment(picked.text);
+    },
+    onSuccess: (report) => {
+      if (!report) return;
+      refresh();
+      setSelectedId(report.environment.id);
+      setDraft({ ...report.environment });
+      setResult({
+        tone: "success",
+        title: `Imported ${report.environment.variables.length} variable(s) into ${report.environment.name}`,
+        warnings: report.warnings,
+      });
+    },
+    onError: (error) =>
+      setResult({ tone: "error", title: "Import failed", detail: toAppError(error).message }),
+  });
+
+  const exportFile = useMutation({
+    mutationFn: (environmentId: string) => exportEnvironmentToFile(environmentId),
+    onSuccess: (saved) =>
+      setResult({ tone: "success", title: `Exported ${saved.fileName}`, detail: saved.path }),
+    onError: (error) =>
+      setResult({ tone: "error", title: "Export failed", detail: toAppError(error).message }),
+  });
+
   if (!open) return null;
 
   return (
@@ -75,16 +113,29 @@ export function EnvironmentManager({ open, onClose }: EnvironmentManagerProps) {
         <aside className="flex w-56 shrink-0 flex-col border-r border-border">
           <div className="flex items-center justify-between border-b border-border px-2 py-1.5">
             <span className="text-xs font-medium">Environments</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="New environment"
-              onClick={() =>
-                save.mutate({ id: "", name: "New environment", variables: [] })
-              }
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Import a Postman environment"
+                title="Import a Postman environment"
+                disabled={importFile.isPending}
+                onClick={() => importFile.mutate()}
+              >
+                <Upload className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="New environment"
+                title="New environment"
+                onClick={() =>
+                  save.mutate({ id: "", name: "New environment", variables: [] })
+                }
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
           <ul className="min-h-0 flex-1 overflow-auto">
             {environments.map((env: Environment) => (
@@ -116,6 +167,8 @@ export function EnvironmentManager({ open, onClose }: EnvironmentManagerProps) {
             </Button>
           </header>
 
+          {result && <TransferBanner result={result} onDismiss={() => setResult(null)} />}
+
           {draft ? (
             <>
               <div className="flex items-end gap-2 border-b border-border p-3">
@@ -129,6 +182,15 @@ export function EnvironmentManager({ open, onClose }: EnvironmentManagerProps) {
                 </label>
                 <Button onClick={() => save.mutate(draft)} disabled={!draft.name.trim()}>
                   Save
+                </Button>
+                <Button
+                  variant="outline"
+                  aria-label="Export environment"
+                  title="Export as a Postman environment"
+                  disabled={exportFile.isPending}
+                  onClick={() => exportFile.mutate(draft.id)}
+                >
+                  <Download className="h-3.5 w-3.5" />
                 </Button>
                 <Button
                   variant="outline"

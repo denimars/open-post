@@ -121,3 +121,32 @@ export function toAppError(value: unknown): AppError {
   if (value instanceof Error) return { kind: "internal", message: value.message };
   return { kind: "internal", message: String(value) };
 }
+
+// ----------------------------------------------- Postman import / export
+
+/** An export file's contents plus the file name Postman would use. */
+export interface ExportFile {
+  fileName: string;
+  contents: string;
+}
+
+/** Where an export was written. */
+export interface SavedExport {
+  path: string;
+  fileName: string;
+  bytes: number;
+}
+
+export interface CollectionImportReport {
+  collection: Collection;
+  importedRequests: number;
+  /** Everything that could not be mapped exactly, in plain language. */
+  warnings: string[];
+  /** Set when the file carried collection variables and they became an environment. */
+  createdEnvironment: Environment | null;
+}
+
+export interface EnvironmentImportReport {
+  environment: Environment;
+  warnings: string[];
+}

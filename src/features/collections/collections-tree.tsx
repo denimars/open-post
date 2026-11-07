@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, FolderPlus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, FolderPlus, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { TransferBanner, type TransferResult } from "@/components/ui/transfer-banner";
 import {
   createCollection,
   deleteCollection,
   deleteRequest,
+  exportCollectionToFile,
+  importCollection,
   listCollections,
 } from "@/lib/tauri";
+import { pickJsonFile } from "@/lib/pick-file";
 import { useTabsStore } from "@/stores/tabs";
-import type { Collection } from "@/types";
+import { toAppError, type Collection } from "@/types";
 
 export function CollectionsTree() {
   const queryClient = useQueryClient();
@@ -19,6 +23,7 @@ export function CollectionsTree() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [newName, setNewName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [result, setResult] = useState<TransferResult | null>(null);
 
   const { data: collections = [], isLoading } = useQuery({
     queryKey: ["collections"],
@@ -38,21 +43,78 @@ export function CollectionsTree() {
   const removeCollection = useMutation({ mutationFn: deleteCollection, onSuccess: refresh });
   const removeRequest = useMutation({ mutationFn: deleteRequest, onSuccess: refresh });
 
+  // Reads a Postman collection the user picks and stores it as a new collection.
+  const importFile = useMutation({
+    mutationFn: async () => {
+      const picked = await pickJsonFile();
+      if (!picked) return null;
+      return importCollection(picked.text);
+    },
+    onSuccess: (report) => {
+      if (!report) return;
+      refresh();
+      if (report.createdEnvironment) {
+        queryClient.invalidateQueries({ queryKey: ["environments"] });
+      }
+      setExpanded((previous) => ({ ...previous, [report.collection.id]: true }));
+      setResult({
+        tone: "success",
+        title: `Imported ${report.importedRequests} request${
+          report.importedRequests === 1 ? "" : "s"
+        } into ${report.collection.name}`,
+        warnings: report.warnings,
+      });
+    },
+    onError: (error) =>
+      setResult({
+        tone: "error",
+        title: "Import failed",
+        detail: toAppError(error).message,
+      }),
+  });
+
+  const exportFile = useMutation({
+    mutationFn: (collectionId: string) => exportCollectionToFile(collectionId),
+    onSuccess: (saved) =>
+      setResult({ tone: "success", title: `Exported ${saved.fileName}`, detail: saved.path }),
+    onError: (error) =>
+      setResult({
+        tone: "error",
+        title: "Export failed",
+        detail: toAppError(error).message,
+      }),
+  });
+
   if (isLoading) return <p className="p-3 text-xs text-muted-foreground">Loading…</p>;
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-2 py-1">
         <span className="px-1 text-xs font-medium text-muted-foreground">Collections</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="New collection"
-          onClick={() => setIsCreating(true)}
-        >
-          <FolderPlus className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Import a Postman collection"
+            title="Import a Postman collection (v2.1)"
+            disabled={importFile.isPending}
+            onClick={() => importFile.mutate()}
+          >
+            <Upload className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="New collection"
+            title="New collection"
+            onClick={() => setIsCreating(true)}
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
+
+      {result && <TransferBanner result={result} onDismiss={() => setResult(null)} />}
 
       {isCreating && (
         <form
@@ -80,7 +142,7 @@ export function CollectionsTree() {
       {collections.length === 0 && !isCreating ? (
         <EmptyState
           title="No collections"
-          hint="Group requests you want to keep into a collection."
+          hint="Group requests you want to keep into a collection, or import one from Postman."
         />
       ) : (
         <ul className="min-h-0 flex-1 overflow-auto">
@@ -106,6 +168,17 @@ export function CollectionsTree() {
                       {collection.requests.length}
                     </span>
                   </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Export ${collection.name}`}
+                    title="Export as a Postman collection"
+                    disabled={exportFile.isPending}
+                    onClick={() => exportFile.mutate(collection.id)}
+                    className="opacity-0 group-hover:opacity-100"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

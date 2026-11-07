@@ -2,6 +2,19 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Native widgets — the `<select>` dropdown list, scrollbars, the focus ring —
+ * are drawn by the platform, not by Tailwind. `color-scheme` is what tells it
+ * which palette to use; without it a dark theme gets a white dropdown.
+ */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
 @theme {
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(222 47% 11%);
@@ -36,6 +49,15 @@ body {
   color: var(--color-foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * WebKitGTK and Chromium draw `<option>` rows from the platform palette, which
+ * does not always follow `color-scheme` on Linux; state the colours as well.
+ */
+option {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
 }
 
 .cm-editor {

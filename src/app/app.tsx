@@ -12,7 +12,8 @@ import { ResponsePanel } from "@/features/response/response-panel";
 import { EnvironmentPicker } from "@/features/environments/environment-picker";
 import { EnvironmentManager } from "@/features/environments/environment-manager";
 import { SaveRequestDialog } from "@/features/collections/save-request-dialog";
-import { cancelRequest, sendRequest } from "@/lib/tauri";
+import { TransferBanner } from "@/components/ui/transfer-banner";
+import { cancelRequest, sendRequest, startupWarning } from "@/lib/tauri";
 import diyaLogo from "@/assets/diya-logo.png";
 import { toAppError } from "@/types";
 import { useTabsStore } from "@/stores/tabs";
@@ -22,9 +23,18 @@ export function App() {
   const { resolved, setMode } = useTheme();
   const [showEnvironments, setShowEnvironments] = useState(false);
   const [showSave, setShowSave] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const { tabs, activeTabId, openTab, setTabState, activeEnvironmentId } = useTabsStore();
   const tab = tabs.find((candidate) => candidate.id === activeTabId) ?? null;
+
+  // A startup problem is reported once the window is up, since it cannot be
+  // shown before the UI exists.
+  useEffect(() => {
+    startupWarning()
+      .then(setWarning)
+      .catch(() => setWarning(null));
+  }, []);
 
   // Always keep one tab open.
   useEffect(() => {
@@ -90,6 +100,13 @@ export function App() {
           </Button>
         </div>
       </header>
+
+      {warning && (
+        <TransferBanner
+          result={{ tone: "error", title: "Storage problem", detail: warning }}
+          onDismiss={() => setWarning(null)}
+        />
+      )}
 
       <PanelGroup direction="horizontal" className="min-h-0 flex-1">
         <Panel defaultSize={22} minSize={14} maxSize={40}>

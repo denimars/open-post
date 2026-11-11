@@ -18,6 +18,13 @@ fn variables_for(db: &Database, environment_id: Option<&str>) -> Vec<KeyValue> {
         .unwrap_or_default()
 }
 
+/// A storage problem found at startup, or `None` on a normal start. The UI
+/// shows it in a banner.
+#[tauri::command]
+pub fn startup_warning(state: State<'_, AppState>) -> Option<String> {
+    state.startup_warning.clone()
+}
+
 #[tauri::command]
 pub async fn send_request(
     state: State<'_, AppState>,

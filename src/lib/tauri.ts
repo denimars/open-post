@@ -25,6 +25,14 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   }
 }
 
+/**
+ * A storage problem found while the app was starting (for example a database
+ * file left unusable by a crash), or `null` on a normal start.
+ */
+export function startupWarning(): Promise<string | null> {
+  return call<string | null>("startup_warning");
+}
+
 export function sendRequest(
   request: HttpRequest,
   environmentId?: string | null,
